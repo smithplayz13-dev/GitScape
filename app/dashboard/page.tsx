@@ -1,14 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState, useRef } from "react";
-import Navbar from "@/components/Navbar";
+import Link from "next/link";
 import ContributionWorld from "@/components/3d/ContributionWorld";
-import VisualizationSwitcher from "@/components/ui/VisualizationSwitcher";
-import YearSelector from "@/components/ui/YearSelector";
-import HUD from "@/components/ui/HUD";
-import ReplayControls from "@/components/ui/ReplayControls";
 import { calculateStats } from "@/lib/stats";
-import type { ContributionCalendar, GitHubUser, WorldMode } from "@/types/github";
+import type { ContributionCalendar, GitHubUser } from "@/types/github";
 
 type ApiResponse = {
   year: number;
@@ -21,14 +17,11 @@ type ApiResponse = {
 export default function DashboardPage() {
   const currentYear = new Date().getFullYear();
   const [year, setYear] = useState(currentYear);
-  const [mode, setMode] = useState<WorldMode>("city");
   const [data, setData] = useState<ApiResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [authUser, setAuthUser] = useState<GitHubUser | null>(null);
-  const [authChecked, setAuthChecked] = useState(false);
 
-  // Replay state
   const [replaying, setReplaying] = useState(false);
   const [revealIndex, setRevealIndex] = useState<number | undefined>(undefined);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -39,8 +32,7 @@ export default function DashboardPage() {
       .then((j) => {
         if (j.authenticated) setAuthUser(j.user);
       })
-      .catch(() => {})
-      .finally(() => setAuthChecked(true));
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -76,9 +68,8 @@ export default function DashboardPage() {
   }, [year]);
 
   const stats = useMemo(() => (data ? calculateStats(data.calendar.days) : null), [data]);
-
-  // Replay logic
   const totalDays = data?.calendar.weeks.flatMap((w) => w.days).length ?? 0;
+
   useEffect(() => {
     if (!replaying || !data) {
       if (intervalRef.current) clearInterval(intervalRef.current);
@@ -96,173 +87,153 @@ export default function DashboardPage() {
         }
         return next;
       });
-    }, 42); // cinematic construction speed
+    }, 44);
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
   }, [replaying, data, totalDays, revealIndex]);
 
-  const handleToggleReplay = () => {
-    if (!data) return;
-    if (revealIndex !== undefined && revealIndex >= totalDays - 1 && !replaying) {
-      // restart
-      setRevealIndex(0);
-      setReplaying(true);
-      return;
-    }
-    if (replaying) setReplaying(false);
-    else {
-      if (revealIndex === undefined) setRevealIndex(0);
-      setReplaying(true);
-    }
-  };
-  const handleSkip = () => {
-    setRevealIndex(totalDays - 1);
-    setReplaying(false);
-  };
-  const handleReset = () => {
-    setRevealIndex(undefined);
-    setReplaying(false);
-  };
-
   const progress = revealIndex !== undefined ? (revealIndex + 1) / Math.max(totalDays, 1) : 1;
 
-  const handleLogout = async () => {
-    await fetch("/api/auth/logout", { method: "POST" });
-    setAuthUser(null);
-    setData(null);
-    setLoading(true);
-    fetch(`/api/github/contributions?year=${year}`)
-      .then((r) => r.json())
-      .then((j) => setData(j))
-      .finally(() => setLoading(false));
-  };
-
   return (
-    <div className="flex min-h-screen flex-col bg-[#05080b] text-white">
-      <Navbar user={authUser} onLogout={handleLogout} />
+    <div className="flex min-h-screen flex-col bg-[#03070d] text-white selection:bg-[#6a4bff]/20">
+      {/* minimal top bar — GITSCAPE ... 2026 */}
+      <header className="mx-auto flex w-full max-w-[1600px] items-center justify-between px-6 py-5">
+        <Link href="/" className="text-sm font-bold tracking-[0.18em] text-white/90">
+          GITSCAPE
+        </Link>
+        <div className="flex items-center gap-3">
+          {authUser && <span className="hidden text-xs tracking-wide text-white/30 md:inline">@{authUser.login}</span>}
+          <div className="relative">
+            <select
+              value={year}
+              onChange={(e) => setYear(parseInt(e.target.value, 10))}
+              className="appearance-none rounded-full border border-white/10 bg-white/[0.04] px-3.5 py-1 pr-7 text-xs font-medium tracking-widest text-white/80 backdrop-blur hover:bg-white/10"
+            >
+              {Array.from({ length: 6 }, (_, i) => currentYear - i).map((y) => (
+                <option key={y} value={y} className="bg-[#03070d]">
+                  {y}
+                </option>
+              ))}
+            </select>
+            <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-white/40">▾</span>
+          </div>
+          {!authUser ? (
+            <Link href="/api/auth/github" className="rounded-full border border-white/10 px-3.5 py-1 text-xs tracking-wide text-white/60 hover:bg-white hover:text-black">
+              CONNECT
+            </Link>
+          ) : (
+            <button
+              onClick={async () => {
+                await fetch("/api/auth/logout", { method: "POST" });
+                setAuthUser(null);
+                setData(null);
+                setLoading(true);
+                const r = await fetch(`/api/github/contributions?year=${year}`);
+                setData(await r.json());
+                setLoading(false);
+              }}
+              className="text-xs tracking-wide text-white/25 hover:text-white/50"
+            >
+              SIGN OUT
+            </button>
+          )}
+        </div>
+      </header>
 
-      {/* cinematic top HUD */}
-      <div className="relative flex-1">
-        <div className="mx-auto flex max-w-[1600px] flex-col px-4 pb-6 pt-4 md:px-6">
-          {/* HUD bar */}
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div className="flex items-center gap-3">
-              <span className="text-sm font-bold tracking-[0.12em] text-white">GITSCAPE</span>
-              <span className="hidden text-xs tracking-widest text-white/25 md:inline">— {year} WORLD</span>
-              {authUser && <span className="text-xs text-white/40">@{authUser.login}</span>}
+      {/* terrain — 80-90% of screen */}
+      <main className="mx-auto flex w-full max-w-[1600px] flex-1 flex-col px-4 pb-8 md:px-6">
+        {loading ? (
+          <div className="flex flex-1 flex-col items-center justify-center py-24">
+            <p className="animate-pulse text-xs font-medium tracking-[0.22em] text-white/70">GENERATING YOUR TERRAIN...</p>
+            <div className="mt-4 h-px w-24 bg-gradient-to-r from-transparent via-[#6a4bff]/40 to-transparent" />
+            <p className="mt-3 text-[11px] tracking-wide text-white/20">Fetching contributions for {year}</p>
+          </div>
+        ) : error ? (
+          <div className="flex flex-1 flex-col items-center justify-center py-16 text-center">
+            <p className="text-sm tracking-wide text-red-300/80">Failed to generate terrain</p>
+            <p className="mt-2 max-w-md text-xs leading-5 text-white/35">{error}</p>
+            <div className="mt-6 flex gap-2">
+              <button
+                onClick={() => {
+                  setError(null);
+                  setLoading(true);
+                  fetch(`/api/github/contributions?year=${year}`)
+                    .then(async (r) => {
+                      const j = await r.json();
+                      if (!r.ok) throw new Error(j.error ?? "Failed");
+                      return j;
+                    })
+                    .then((j) => setData(j))
+                    .catch((e) => setError(e.message))
+                    .finally(() => setLoading(false));
+                }}
+                className="rounded-full bg-white px-4 py-1.5 text-xs font-semibold text-black"
+              >
+                Retry
+              </button>
+              <Link href="/api/auth/github" className="rounded-full border border-white/10 px-4 py-1.5 text-xs text-white/60">
+                Re-authenticate
+              </Link>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <VisualizationSwitcher mode={mode} onChange={setMode} />
-              <YearSelector year={year} onChange={setYear} />
-              {!authUser && authChecked && (
-                <a
-                  href="/api/auth/github"
-                  className="rounded-full bg-white px-4 py-1.5 text-xs font-semibold text-black hover:bg-white/90"
-                >
-                  Sign in
-                </a>
+          </div>
+        ) : data && stats ? (
+          <>
+            <div className="flex-1">
+              <ContributionWorld calendar={data.calendar} replayIndex={revealIndex} cinematic />
+              <div className="mt-2 text-center text-[10px] tracking-[0.18em] text-white/18">terrain</div>
+            </div>
+
+            {/* minimal typography stats — not cards */}
+            <div className="mx-auto mt-6 grid max-w-2xl grid-cols-3 gap-6 text-center">
+              <div>
+                <div className="text-lg font-light tracking-tight text-white">{data.calendar.totalContributions.toLocaleString()}</div>
+                <div className="mt-1 text-[10px] font-medium tracking-[0.16em] text-white/30">CONTRIBUTIONS</div>
+              </div>
+              <div>
+                <div className="text-lg font-light tracking-tight text-white">{stats.currentStreak}</div>
+                <div className="mt-1 text-[10px] font-medium tracking-[0.16em] text-white/30">DAY STREAK</div>
+              </div>
+              <div>
+                <div className="text-lg font-light tracking-tight text-white">{stats.longestStreak}</div>
+                <div className="mt-1 text-[10px] font-medium tracking-[0.16em] text-white/30">BEST STREAK</div>
+              </div>
+            </div>
+            {data.demo && (
+              <div className="mt-3 text-center text-[10px] tracking-wide text-white/20">Demo data — <Link href="/api/auth/github" className="underline decoration-white/15 hover:text-white/40">connect GitHub</Link> for your real terrain</div>
+            )}
+
+            {/* REPLAY — minimal */}
+            <div className="mt-8 flex flex-col items-center gap-3">
+              <button
+                onClick={() => {
+                  if (revealIndex !== undefined && revealIndex >= totalDays - 1 && !replaying) {
+                    setRevealIndex(0);
+                    setReplaying(true);
+                    return;
+                  }
+                  setReplaying((v) => !v);
+                  if (revealIndex === undefined) setRevealIndex(0);
+                }}
+                className="rounded-full border border-white/12 bg-white/[0.03] px-6 py-2 text-xs font-medium tracking-[0.16em] text-white/80 backdrop-blur hover:bg-white hover:text-black"
+              >
+                {replaying ? "PAUSE" : "REPLAY"}
+              </button>
+              {(replaying || revealIndex !== undefined) && (
+                <div className="flex w-full max-w-md items-center gap-3">
+                  <div className="h-px flex-1 bg-white/10">
+                    <div className="h-px bg-gradient-to-r from-[#1a6cff] via-[#c23bff] to-[#ff3b9a] transition-all" style={{ width: `${Math.round(progress * 100)}%` }} />
+                  </div>
+                  <span className="text-[10px] tracking-widest text-white/25">{year} · {data.calendar.totalContributions.toLocaleString()}</span>
+                </div>
+              )}
+              {revealIndex !== undefined && revealIndex >= totalDays - 1 && !replaying && (
+                <div className="text-xs tracking-[0.18em] text-[#c23bff]/70">{year} · {data.calendar.totalContributions.toLocaleString()} contributions — complete</div>
               )}
             </div>
-          </div>
-
-          <div className="mt-4">
-            {loading ? (
-              <div className="rounded-[20px] border border-white/[0.06] bg-[#080c10] px-8 py-16">
-                <div className="flex flex-col items-center justify-center">
-                  <div className="h-10 w-10 animate-spin rounded-full border-2 border-white/10 border-t-[#39d353]" style={{ animationDuration: "0.9s" }} />
-                  <p className="mt-5 text-sm font-medium tracking-[0.14em] text-white">BUILDING YOUR WORLD...</p>
-                  <p className="mt-1 text-xs tracking-widest text-white/30">CONSTRUCTING CITY FROM CONTRIBUTIONS</p>
-                  <div className="mt-6 h-1 w-64 overflow-hidden rounded-full bg-white/10">
-                    <div className="h-full w-1/2 animate-pulse rounded-full bg-gradient-to-r from-[#26a641] to-[#39d353]" style={{ width: "68%" }} />
-                  </div>
-                </div>
-              </div>
-            ) : error ? (
-              <div className="rounded-[20px] border border-red-500/20 bg-red-500/[0.06] px-6 py-10 text-center">
-                <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-red-500/15 text-red-400">!</div>
-                <h3 className="mt-3 text-sm font-semibold tracking-wide text-white">WORLD FAILED TO INITIALIZE</h3>
-                <p className="mx-auto mt-1 max-w-md text-sm leading-6 text-white/50">{error}</p>
-                <div className="mt-4 flex justify-center gap-2">
-                  <button
-                    onClick={() => {
-                      setError(null);
-                      setLoading(true);
-                      fetch(`/api/github/contributions?year=${year}`)
-                        .then(async (r) => {
-                          const j = await r.json();
-                          if (!r.ok) throw new Error(j.error ?? "Failed");
-                          return j;
-                        })
-                        .then((j) => setData(j))
-                        .catch((e) => setError(e.message))
-                        .finally(() => setLoading(false));
-                    }}
-                    className="rounded-full bg-white px-4 py-1.5 text-sm font-medium text-black"
-                  >
-                    Retry
-                  </button>
-                  <a
-                    href="/api/auth/github"
-                    className="rounded-full border border-white/10 px-4 py-1.5 text-sm font-medium text-white/70 hover:bg-white/5"
-                  >
-                    Re-authenticate
-                  </a>
-                </div>
-              </div>
-            ) : data && stats ? (
-              <>
-                {/* THE WORLD — hero */}
-                <ContributionWorld
-                  calendar={data.calendar}
-                  mode={mode}
-                  replayIndex={revealIndex}
-                  cinematic
-                />
-
-                {/* bottom HUD — stats + replay */}
-                <div className="mt-4 flex flex-col gap-4">
-                  <div className="flex flex-col items-center gap-3 md:flex-row md:justify-between">
-                    <HUD stats={stats} totalContributions={data.calendar.totalContributions} year={year} />
-                    <div className="flex items-center gap-2 text-[10px] tracking-widest text-white/25">
-                      <span>{mode.toUpperCase()} MODE</span>
-                      <span className="h-1 w-1 rounded-full bg-white/20" />
-                      <span>{data.demo ? "DEMO · SIGN IN FOR REAL DATA" : "LIVE GITHUB DATA"}</span>
-                    </div>
-                  </div>
-
-                  <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] px-4 py-4 backdrop-blur md:px-6">
-                    <ReplayControls
-                      playing={replaying}
-                      progress={progress}
-                      onToggle={handleToggleReplay}
-                      onSkip={handleSkip}
-                      onReset={handleReset}
-                      year={year}
-                      total={data.calendar.totalContributions}
-                    />
-                    {revealIndex !== undefined && revealIndex >= totalDays - 1 && !replaying && (
-                      <div className="mt-3 text-center text-xs tracking-[0.18em] text-[#39d353]">
-                        {year} · {data.calendar.totalContributions.toLocaleString()} CONTRIBUTIONS — WORLD COMPLETE
-                      </div>
-                    )}
-                  </div>
-
-                  {/* quiet year subtle message */}
-                  {data.calendar.days.filter((d) => d.count === 0).length > 310 && mode === "city" && (
-                    <div className="rounded-xl border border-white/5 bg-white/[0.02] px-4 py-3 text-center text-xs tracking-wide text-white/30">
-                      Quiet year — vast empty districts. Your next streak will light new blocks.
-                    </div>
-                  )}
-                </div>
-              </>
-            ) : null}
-          </div>
-        </div>
-
-        {/* footer subtle */}
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-white/5 to-transparent" />
-      </div>
+          </>
+        ) : null}
+      </main>
     </div>
   );
 }

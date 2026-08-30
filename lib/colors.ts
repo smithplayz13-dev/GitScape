@@ -1,84 +1,100 @@
-// Centralized color configuration — GitHub-inspired intensity palette
-// 0 = empty, 1-4 = increasing intensity
-// Extended for cinematic city/terrain/galaxy world
+// Centralized palette — cinematic data terrain
+// Dark navy environment + translucent electric blue tiles + violet/magenta/pink peaks
+// Keep this file as the SINGLE source of truth for terrain colors
 
-export const contributionColors = {
-  level0: "#161b22", // nearly invisible / dark — 0 contributions
-  level1: "#0e4429",
-  level2: "#006d32",
-  level3: "#26a641",
-  level4: "#39d353", // brightest — high intensity
+export const palette = {
+  // environment
+  bg: "#03070d",
+  bgNavy: "#060e1c",
+  fog: "#03070d",
+  // base tile — floating glass
+  tile: "#0e2a4a", // deep translucent blue
+  tileEmissive: "#0a4a9a",
+  tileEdge: "#1a5fb0",
+  // structure gradient: blue → violet → magenta → hot pink
+  low: "#1a6cff", // electric blue
+  mid: "#6a4bff", // violet
+  high: "#c23bff", // magenta
+  peak: "#ff3b9a", // hot pink
+  peakHot: "#ff5aa8",
+  // bloom emissive mirrors structure
+  grid: "#0f2b4a",
+  gridHolo: "#13365e",
+  text: "rgba(255,255,255,0.82)",
+  textDim: "rgba(255,255,255,0.35)",
 } as const;
 
-export const contributionColorsHover = {
-  level0: "#1c2430",
-  level1: "#14532f",
-  level2: "#0a7a3a",
-  level3: "#2db84a",
-  level4: "#4ae05e",
-} as const;
+// Legacy green palette removed — terrain uses the above.
+// For backward compat, map old helpers to new gradient via normalized value
+import * as THREE from "three";
 
-// Cinematic emissive palette — used for windows / bloom
-export const emissiveColors = {
-  level0: "#000000",
-  level1: "#0a2e1a",
-  level2: "#0f4d28",
-  level3: "#1a8a3a",
-  level4: "#39d353",
-} as const;
+const _low = new THREE.Color(palette.low);
+const _mid = new THREE.Color(palette.mid);
+const _high = new THREE.Color(palette.high);
+const _peak = new THREE.Color(palette.peak);
 
-export function getColorForLevel(level: number, hovered = false): string {
-  const palette = hovered ? contributionColorsHover : contributionColors;
-  switch (level) {
-    case 0:
-      return palette.level0;
-    case 1:
-      return palette.level1;
-    case 2:
-      return palette.level2;
-    case 3:
-      return palette.level3;
-    case 4:
-      return palette.level4;
-    default:
-      return palette.level0;
+// Smooth blue → violet → pink interpolation
+export function getStructureColor(normalized: number): string {
+  const n = Math.max(0, Math.min(1, normalized));
+  const c = new THREE.Color();
+  if (n < 0.33) {
+    c.copy(_low).lerp(_mid, n / 0.33);
+  } else if (n < 0.66) {
+    c.copy(_mid).lerp(_high, (n - 0.33) / 0.33);
+  } else {
+    c.copy(_high).lerp(_peak, (n - 0.66) / 0.34);
   }
+  return `#${c.getHexString()}`;
 }
 
+export function getStructureEmissive(normalized: number): string {
+  // emissive is slightly more saturated
+  return getStructureColor(normalized);
+}
+
+export function getTileColor(): string {
+  return palette.tile;
+}
+
+// Level helpers kept for legacy callers — now map to normalized quartiles
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export function getColorForLevel(level: number, _hovered?: boolean): string {
+  if (level === 0) return palette.tile;
+  if (level === 1) return palette.low;
+  if (level === 2) return palette.mid;
+  if (level === 3) return palette.high;
+  return palette.peak;
+}
 export function getEmissiveForLevel(level: number): string {
-  switch (level) {
-    case 0:
-      return emissiveColors.level0;
-    case 1:
-      return emissiveColors.level1;
-    case 2:
-      return emissiveColors.level2;
-    case 3:
-      return emissiveColors.level3;
-    case 4:
-      return emissiveColors.level4;
-    default:
-      return emissiveColors.level0;
-  }
+  if (level === 0) return "#000000";
+  return getColorForLevel(level);
 }
 
-// Derive level from count (mirrors GitHub's quartile logic roughly)
 export function getLevelForCount(count: number, maxCount: number): number {
   if (count === 0) return 0;
   if (maxCount === 0) return 0;
-  // simple thresholds — tuned for visual variety
   if (count >= maxCount * 0.75) return 4;
   if (count >= maxCount * 0.5) return 3;
   if (count >= maxCount * 0.25) return 2;
   return 1;
 }
 
-// Terrain gradient — maps normalized height to color
+// Legacy alias for old terrain file
 export function getTerrainColor(normalized: number): string {
-  if (normalized <= 0.02) return "#0e1a14";
-  if (normalized < 0.2) return "#1a2e1f";
-  if (normalized < 0.4) return "#1f3d26";
-  if (normalized < 0.65) return "#2a5a32";
-  if (normalized < 0.85) return "#2f7a3d";
-  return "#39d353";
+  return getStructureColor(normalized);
+}
+
+// Robust percentile / log normalization — prevents one huge day from flattening terrain
+export function getNormalizedHeight(count: number, allCounts: number[]): number {
+  if (count === 0) return 0;
+  const sorted = [...allCounts].filter((c) => c > 0).sort((a, b) => a - b);
+  if (sorted.length === 0) return 0;
+  // 92nd percentile as soft cap
+  const p92 = sorted[Math.floor(sorted.length * 0.92)] ?? sorted[sorted.length - 1];
+  const cap = Math.max(p92 * 1.35, Math.max(...allCounts) * 0.65);
+  const capped = Math.min(count, cap);
+  // log scaling for perceptual height
+  const log = Math.log1p(capped) / Math.log1p(cap);
+  // slight gamma for better mid-range visibility
+  return Math.pow(log, 0.88);
 }
