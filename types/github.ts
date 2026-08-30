@@ -34,3 +34,5 @@ export type ContributionsResponse = {
   calendar: ContributionCalendar;
   year: number;
 };
+
+export type WorldMode = "city" | "terrain" | "galaxy";
