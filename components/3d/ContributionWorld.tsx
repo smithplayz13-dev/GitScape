@@ -45,9 +45,9 @@ export default function ContributionWorld({ calendar, mode = "city", replayIndex
 
         <CinematicCamera autoPlay={cinematic} />
 
-        {/* bloom for pink/purple glow */}
+        {/* bloom for pink/purple glow — towers must emit light beyond geometry */}
         <EffectComposer enableNormalPass={false}>
-          <Bloom intensity={0.72} luminanceThreshold={0.18} luminanceSmoothing={0.82} radius={0.42} mipmapBlur />
+          <Bloom intensity={0.82} luminanceThreshold={0.16} luminanceSmoothing={0.85} radius={0.48} mipmapBlur />
         </EffectComposer>
       </Canvas>
 
